@@ -1,0 +1,59 @@
+name: Flutter Windows Release
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install WiX Toolset
+        run: |
+          $installBuilder = "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311.exe"
+          Invoke-WebRequest -Uri $installBuilder -OutFile "wix311.exe"
+          Start-Process -FilePath "wix311.exe" -ArgumentList "/install","/quiet" -Wait
+          
+      - name: Flutter Build
+        run: |
+          flutter config --enable-windows-desktop
+          flutter pub get
+          flutter build windows --release
+          
+      - name: Create ZIP archive
+        run: |
+          Compress-Archive -Path "build/windows/x64/runner/Release*" -DestinationPath "build/windows/x64/runner/Release/panaudio_full.zip"
+          
+      - name: Get current date
+        shell: pwsh
+        run: |
+          echo "CURRENT_DATE=$(Get-Date -Format 'yyyy-MM-dd_HH-mm')" >> $env:GITHUB_ENV
+      
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PANAUDIO_SECRET }}
+        with:
+          tag_name: Windows_${{ env.CURRENT_DATE }}
+          release_name: Windows ${{ env.CURRENT_DATE }}
+          draft: false
+          prerelease: false
+
+      - name: Upload ZIP archive to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PANAUDIO_SECRET }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/windows/x64/runner/Release/panaudio_full.zip
+          asset_name: panaudio_full.zip
+          asset_content_type: application/zip
